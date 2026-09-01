@@ -18,6 +18,11 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
+      - name: Free space for the V8 build
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/local/.ghcup /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - name: Install .NET 8
         uses: actions/setup-dotnet@v4
         with:
@@ -36,6 +41,16 @@ jobs:
           sed -i '/install-sysroot.py --arch=i386/d' Unix/V8Update.sh
           cd Unix
           bash ./V8Update.sh -y x64 Release
+
+      - name: Surface V8 failure diagnostics
+        if: failure()
+        run: |
+          mapfile -t logs < <(find V8/build -type f -name '*.log' -size +0c -printf '%T@ %p\n' | sort -nr | head -8 | cut -d' ' -f2-)
+          for log in "${logs[@]}"; do
+            message=$(tail -40 "$log" | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
+            echo "::error title=V8 diagnostic: $log::${message:0:6000}"
+          done
+          df -h /
 
       - name: Build ClearScript native library
         run: make -C Unix/ClearScriptV8 CPU=x64
