@@ -23,24 +23,29 @@ jobs:
           sudo rm -rf /usr/local/lib/android /usr/local/.ghcup /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
 
-      - name: Install .NET 8
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 8.0.x
-
-      - name: Install build prerequisites
+      - name: Build and test on Ubuntu 20.04
         run: |
-          sudo apt-get update
-          sudo apt-get install --yes binutils ca-certificates curl file git libc6-dev make python3 xz-utils
-
-      - name: Build pinned V8 for Linux x64 Release
-        run: |
-          # The upstream script is stored with Windows line endings and no executable bit.
-          sed -i 's/\r$//' Unix/V8Update.sh
-          # This job targets x64 only, so avoid downloading the unused i386 sysroot.
-          sed -i '/install-sysroot.py --arch=i386/d' Unix/V8Update.sh
-          cd Unix
-          bash ./V8Update.sh -y x64 Release
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/workspace" \
+            --workdir /workspace \
+            mcr.microsoft.com/dotnet/sdk:8.0-focal \
+            bash -lc '
+              set -e
+              trap "chown -R --reference=/workspace/.git /workspace/bin /workspace/V8 2>/dev/null || true" EXIT
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install --yes binutils ca-certificates curl file git libc6-dev make python3 xz-utils
+              sed -i "s/\r$//" Unix/V8Update.sh
+              sed -i "/install-sysroot.py --arch=i386/d" Unix/V8Update.sh
+              cd Unix
+              bash ./V8Update.sh -y x64 Release
+              cd ..
+              make -C Unix/ClearScriptV8 CPU=x64
+              dotnet test Unix/ClearScriptTest/ClearScriptTest.csproj \
+                --configuration Release \
+                --framework net8.0 \
+                --filter FullyQualifiedName~V8ScriptEngine_PromiseRejection \
+                --property:VisualStudioVersion=17.0
+            '
 
       - name: Surface V8 failure diagnostics
         if: failure()
@@ -51,17 +56,6 @@ jobs:
             echo "::error title=V8 diagnostic: $log::${message:0:6000}"
           done
           df -h /
-
-      - name: Build ClearScript native library
-        run: make -C Unix/ClearScriptV8 CPU=x64
-
-      - name: Run promise-rejection tests
-        run: >-
-          dotnet test Unix/ClearScriptTest/ClearScriptTest.csproj
-          --configuration Release
-          --framework net8.0
-          --filter FullyQualifiedName~V8ScriptEngine_PromiseRejection
-          --property:VisualStudioVersion=17.0
 
       - name: Record artifact details
         run: |
