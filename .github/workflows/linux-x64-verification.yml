@@ -28,13 +28,13 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Build native library on Ubuntu 20.04
+      - name: Build native library on glibc 2.31 baseline
         run: |
           set -o pipefail
           docker run --rm \
             --volume "$GITHUB_WORKSPACE:/workspace" \
             --workdir /workspace \
-            ubuntu:20.04 \
+            python:3.11-bullseye \
             bash -lc '
               set -e
               trap "chown -R --reference=/workspace/.git /workspace/bin /workspace/V8 2>/dev/null || true" EXIT
