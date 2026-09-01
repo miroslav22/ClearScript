@@ -30,10 +30,12 @@ jobs:
 
       - name: Build pinned V8 for Linux x64 Release
         run: |
+          # The upstream script is stored with Windows line endings and no executable bit.
+          sed -i 's/\r$//' Unix/V8Update.sh
           # This job targets x64 only, so avoid downloading the unused i386 sysroot.
           sed -i '/install-sysroot.py --arch=i386/d' Unix/V8Update.sh
           cd Unix
-          ./V8Update.sh -y x64 Release
+          bash ./V8Update.sh -y x64 Release
 
       - name: Build ClearScript native library
         run: make -C Unix/ClearScriptV8 CPU=x64
