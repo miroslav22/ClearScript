@@ -16,19 +16,25 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Free space for the V8 build
         run: |
           sudo rm -rf /usr/local/lib/android /usr/local/.ghcup /opt/ghc /opt/hostedtoolcache/CodeQL
           df -h /
 
-      - name: Build and test on Ubuntu 20.04
+      - name: Install .NET 8
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build native library on Ubuntu 20.04
         run: |
+          set -o pipefail
           docker run --rm \
             --volume "$GITHUB_WORKSPACE:/workspace" \
             --workdir /workspace \
-            mcr.microsoft.com/dotnet/sdk:8.0-focal \
+            ubuntu:20.04 \
             bash -lc '
               set -e
               trap "chown -R --reference=/workspace/.git /workspace/bin /workspace/V8 2>/dev/null || true" EXIT
@@ -40,22 +46,29 @@ jobs:
               bash ./V8Update.sh -y x64 Release
               cd ..
               make -C Unix/ClearScriptV8 CPU=x64
-              dotnet test Unix/ClearScriptTest/ClearScriptTest.csproj \
-                --configuration Release \
-                --framework net8.0 \
-                --filter FullyQualifiedName~V8ScriptEngine_PromiseRejection \
-                --property:VisualStudioVersion=17.0
-            '
+            ' 2>&1 | tee linux-native-build.log
 
       - name: Surface V8 failure diagnostics
         if: failure()
         run: |
+          if test -s linux-native-build.log; then
+            message=$(tail -80 linux-native-build.log | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
+            echo "::error title=Linux native build diagnostic::${message:0:6000}"
+          fi
           mapfile -t logs < <(find V8/build -type f -name '*.log' -size +0c -printf '%T@ %p\n' | sort -nr | head -8 | cut -d' ' -f2-)
           for log in "${logs[@]}"; do
             message=$(tail -40 "$log" | tr '\n' ' ' | sed 's/%/%25/g; s/\r/%0D/g')
             echo "::error title=V8 diagnostic: $log::${message:0:6000}"
           done
           df -h /
+
+      - name: Run promise-rejection tests
+        run: >-
+          dotnet test Unix/ClearScriptTest/ClearScriptTest.csproj
+          --configuration Release
+          --framework net8.0
+          --filter FullyQualifiedName~V8ScriptEngine_PromiseRejection
+          --property:VisualStudioVersion=17.0
 
       - name: Record artifact details
         run: |
