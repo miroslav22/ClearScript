@@ -39,7 +39,7 @@ jobs:
               set -e
               trap "chown -R --reference=/workspace/.git /workspace/bin /workspace/V8 2>/dev/null || true" EXIT
               apt-get update
-              DEBIAN_FRONTEND=noninteractive apt-get install --yes binutils ca-certificates curl file git libc6-dev make python3 xz-utils
+              DEBIAN_FRONTEND=noninteractive apt-get install --yes binutils ca-certificates curl file git libc6-dev make pkg-config python3 xz-utils
               sed -i "s/\r$//" Unix/V8Update.sh
               sed -i "/install-sysroot.py --arch=i386/d" Unix/V8Update.sh
               cd Unix
